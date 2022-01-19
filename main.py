@@ -15,6 +15,7 @@ class CoffeeWidget(QMainWindow):
         self.pushButton.clicked.connect(self.filter)
         self.pushButton_2.clicked.connect(self.initUi)
         self.listWidget.itemClicked.connect(self.open_add)
+        self.pushButton_3.clicked.connect(self.open_redactor)
 
     def initUi(self):
         self.pushButton_2.hide()
@@ -74,6 +75,10 @@ class CoffeeWidget(QMainWindow):
         else:
             self.statusBar().showMessage('Ничего не найдено')
 
+    def open_redactor(self, *params, sort=None):
+        ex1 = Redactor(self, params, sort=sort)
+        ex1.show()
+
     def open_add(self):
         a = self.listWidget.selectedItems()[0].text()
         ex1 = AddClass(a, self)
@@ -83,17 +88,76 @@ class CoffeeWidget(QMainWindow):
 class AddClass(QMainWindow):
     def __init__(self, name, parent=None):
         super(AddClass, self).__init__(parent)
-
         uic.loadUi('sort.ui', self)
-        self.setWindowTitle(name)
+        self.parent = parent
+        self.name = name
+        self.get_all()
 
-        cur = parent.con.cursor()
-        description, price, volume = cur.execute(f"""SELECT description, price, volume FROM 'table'
-                        WHERE sort = '{name}'""").fetchone()
+        self.pushButton_2.clicked.connect(lambda: self.close())
+
+    def get_all(self):
+        self.setWindowTitle(self.name)
+        cur = self.parent.con.cursor()
+        params = cur.execute(f"""SELECT * FROM 'table' WHERE sort = '{self.name}'""").fetchone()
+        self.pushButton.clicked.connect(lambda: self.parent.open_redactor(params, sort=self))
+
+        fry, description, price, volume = cur.execute(f"""SELECT fry, description, price, volume FROM 'table'
+                        WHERE sort = '{self.name}'""").fetchone()
 
         self.textEdit.setPlainText(description)
         self.label_4.setText(price + ' руб')
         self.label_5.setText(volume + ' г')
+        self.label_7.setText(fry)
+
+
+class Redactor(QMainWindow):
+    def __init__(self, parent=None, params=None, sort=None):
+        super(Redactor, self).__init__(parent)
+        uic.loadUi('addEditCoffeeForm.ui', self)
+        self.pushButton.clicked.connect(self.save_results)
+
+        self.id = None
+        self.parent = parent
+        self.sort = sort
+
+        if params[0]:
+            a, b, c, d, e, f, g, h, i = params[0]
+            self.id = a
+            self.lineEdit.setText(b)
+            self.lineEdit_2.setText(c)
+            self.lineEdit_3.setText(d)
+            self.comboBox.setCurrentText(e)
+            self.textEdit.setPlainText(f)
+            self.spinBox.setValue(int(g))
+            self.spinBox_2.setValue(int(h))
+
+    def save_results(self):
+        self.statusBar().clearMessage()
+        try:
+            b = self.lineEdit.text()
+            c = self.lineEdit_2.text()
+            d = self.lineEdit_3.text()
+            e = self.comboBox.currentText()
+            f = self.textEdit.toPlainText()
+            g = self.spinBox.value()
+            h = self.spinBox_2.value()
+            i = round(g // h * 100)
+            cur = self.parent.con.cursor()
+            if self.id:
+                cur.execute(f"""UPDATE 'table'
+                SET sort = '{b}', view = '{c}', fry = '{d}', type = '{e}', description = '{f}', 
+                price = '{g}', volume = '{h}', hundred_price = {i}
+                WHERE id = {self.id}""")
+                self.parent.con.commit()
+                self.sort.get_all()
+            else:
+                cur.execute(f"""INSERT INTO 'table'(sort,view,fry,type,description,price,volume,hundred_price)
+                VALUES('{b}','{c}','{d}','{e}','{f}','{g}','{h}',{i})""")
+                self.parent.con.commit()
+            self.parent.get_table()
+            self.close()
+        except ZeroDivisionError:
+            self.statusBar().showMessage('Невозможный формат')
 
 
 def main():
